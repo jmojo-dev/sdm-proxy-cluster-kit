@@ -1,0 +1,27 @@
+(
+umask 077
+[ "$(id -u)" = 0 ] || { echo 'NOT ROOT - nothing was run.'; exit 3; }
+dir=/opt/sdm-proxy-cluster-kit
+[ -d /opt ] || mkdir -m 0755 /opt || exit 1
+[ -L /opt ] && exit 1
+[ "$(stat -c %u /opt)" = 0 ] && [ -z "$(find /opt -maxdepth 0 -perm /022 -print)" ] || exit 1
+[ -d "$dir" ] || mkdir -m 0700 "$dir" || exit 1
+[ -L "$dir" ] && exit 1
+[ "$(stat -c %u:%a "$dir")" = 0:700 ] || exit 1
+tmp=$(mktemp -d "$dir/.paste.XXXXXX") || exit 1
+trap 'rm -rf -- "$tmp"' EXIT
+cat > "$tmp/body" <<'@@DELIM@@'
+@@PAYLOAD@@
+@@DELIM@@
+tr -cd 'A-Za-z0-9+/=' < "$tmp/body" | base64 -d | gzip -dc > "$tmp/kit"
+want=@@KIT_SHA256@@
+if echo "$want  $tmp/kit" | sha256sum -c - >/dev/null 2>&1; then
+  dst=$dir/sdm-proxy-cluster-kit.sh
+  chmod 0700 "$tmp/kit" && mv -fT "$tmp/kit" "$dst" || exit 1
+  echo "unpacked OK: $dst"
+  bash "$dst"
+else
+  echo 'PASTE WAS TRUNCATED OR MANGLED - nothing was run.'
+  exit 1
+fi
+)
